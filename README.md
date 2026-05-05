@@ -1,158 +1,307 @@
-🛡️ Cyber Backend — USB Threat Detection & Secure Vault System
+# 🛡️ Cyber Backend — USB Threat Detection System
+                                                                                 
+A Windows-based cybersecurity backend that monitors USB device insertions in real time, enforces password-gated access to a protected folder (`SecureVault`), and logs all security events to a MySQL database.
 
-🚀 Overview
-A Windows-based cybersecurity backend system that detects USB device insertions in real-time, enforces password-based authentication, and protects sensitive data through system-level access control.
-It combines system programming + cybersecurity + backend engineering to simulate enterprise-grade endpoint protection.
+---
+                                                                                
+## 📌 Overview
 
-🧠 Built With
-Python 3.8+
-Flask (REST APIs)
-MySQL (Event logging & authentication data)
-WMI (Windows hardware event monitoring)
-bcrypt (Secure password hashing)
-Windows ACL (icacls) for folder protection
-Multithreading (session management)
+When a USB device is plugged into a monitored Windows machine, the system:
 
-🎯 Objective
-To design a real-time USB threat detection system that:
-Prevents unauthorized access to sensitive folders
-Logs all USB activities for audit purposes
-Implements session-based secure access control
-Demonstrates OS-level security enforcement on Windows
+1. Detects the insertion via WMI (Windows Management Instrumentation)
+2. Prompts the user for a password before granting access
+3. Unlocks `SecureVault` (a protected folder) only on successful authentication
+4. Locks the system after repeated failed attempts
+5. Automatically revokes access when the session expires
+6. Logs every event — insertions, access grants, denials, and locks — to MySQL
 
-✨ Key Features
-🔌 Real-time USB device detection using WMI
-🔐 Password-protected SecureVault access system
-🧠 Session-based authentication with auto-expiry
-🚫 Auto-lock after multiple failed login attempts
-🗂️ MySQL-based security event logging
-🛡️ Folder-level protection using Windows icacls
-📊 Full audit trail of system activity
+---
 
-🏗️ System Architecture
+## 🏗️ Architecture
 
+```
+cyber_backend/
+├── app.py                  # Main API — receives and stores USB log entries
+└── usb_guard/
+    ├── app.py              # USB Guard API — handles password verification & lock status
+    ├── config.py           # Settings: folder path, max attempts, session/lock durations
+    ├── database.py         # MySQL connection factory (env-var-based credentials)
+    ├── security_core.py    # Core logic: verify password, lock/unlock folder, session timer
+    ├── usb_listener.py     # WMI-based USB event watcher (entry point on target machine)
+    ├── create_admin.py     # One-time script to create the admin account
+    └── requirements.txt    # Python dependencies
+```
+
+### Component Interaction
+
+```
 USB Device Inserted
         │
         ▼
-usb_listener.py (WMI Event Detector)
+  usb_listener.py  ──── WMI event ────▶  Detects insertion
         │
         ▼
-Flask API (/verify)
+  POST /verify  ──────────────────────▶  usb_guard/app.py
+                                                │
+                                         security_core.py
+                                         ├── Checks lock status (MySQL)
+                                         ├── Verifies bcrypt password hash
+                                         ├── Grants/revokes folder ACLs (icacls)
+                                         └── Starts session timer thread
         │
         ▼
-security_core.py
-   ├── Password verification (bcrypt)
-   ├── Lock/Unlock folder (icacls)
-   ├── Session management
-   └── Attempt tracking
-        │
-        ▼
-MySQL Database (Logs + Admin Data)
+  POST /api/usb-log  ─────────────────▶  app.py  ──▶  MySQL (usb_logs table)
+```
 
-📁 Project Structure
+---
 
-cyber_backend/
-├── app.py                  # Main API (USB logs)
-├── database_schema.sql     # Database setup
-├── .env.example            # Environment config template
-│
-└── usb_guard/
-    ├── app.py              # Authentication API
-    ├── config.py           # System configuration
-    ├── database.py         # DB connection handler
-    ├── security_core.py    # Core security logic
-    ├── usb_listener.py     # USB event monitoring
-    ├── create_admin.py     # Admin setup script
-    └── requirements.txt    # Dependencies
-    
-⚙️ Installation & Setup
-1️⃣ Clone repository
-Bash
-git clone https://github.com/prachisingh015/cyber_backend.git
+## ⚙️ Prerequisites
+
+- **OS**: Windows 10/11 (required for WMI and `icacls`)
+- **Python**: 3.8 or higher
+- **MySQL**: 5.7+ or MariaDB 10.3+
+- The `SecureVault` folder must exist at the path configured in `config.py`
+
+---
+
+## 🚀 Setup & Installation
+
+### 1. Clone the repository
+
+```bash
+git clone (https://github.com/prachisingh015/cyber_backend.git)
 cd cyber_backend
-2️⃣ Install dependencies
-Bash
+```
+
+### 2. Install dependencies
+
+```bash
 pip install -r usb_guard/requirements.txt
-3️⃣ Setup database
-Bash
+```
+
+### 3. Configure the database
+
+Create the database and tables using the provided schema:
+
+```bash
 mysql -u root -p < database_schema.sql
-4️⃣ Configure environment
-Bash
+```
+
+### 4. Set environment variables
+                 
+Copy `.env.example` to `.env` and fill in your MySQL credentials:
+                               
+```bash
 cp .env.example .env
-Set values:
-Environment
+```
+                                 
+```env
 DB_HOST=localhost
 DB_USER=root
-DB_PASSWORD=your_password
+DB_PASSWORD=your_password_here
 DB_NAME=cyber_threat_detection
-5️⃣ Create Secure Folder
-Bash
-mkdir C:\SecureVault
-6️⃣ Create Admin Account
-Bash
-python usb_guard/create_admin.py
+```
 
-▶️ Run System
-Terminal 1 — Main API
-Bash
+> ⚠️ **Never commit your `.env` file.** It is already listed in `.gitignore`.
+                                      
+Set the variables in your shell before running (Windows):
+                                
+```cmd
+set DB_HOST=localhost
+set DB_USER=root
+set DB_PASSWORD=your_password_here
+set DB_NAME=cyber_threat_detection
+```
+
+Or on PowerShell:
+
+```powershell
+$env:DB_HOST="localhost"
+$env:DB_USER="root"
+$env:DB_PASSWORD="your_password_here"
+$env:DB_NAME="cyber_threat_detection"
+```
+
+### 5. Configure the protected folder
+
+Edit `usb_guard/config.py` to match your setup:
+
+```python
+SECURE_FOLDER = r"C:\SecureVault"   # Path to the folder to protect
+
+MAX_ATTEMPTS           = 3           # Failed attempts before lockout
+LOCK_DURATION_MINUTES  = 5           # How long the lockout lasts
+SESSION_DURATION_MINUTES = 10        # How long an authenticated session lasts
+```
+
+Create the `SecureVault` folder if it doesn't exist:
+
+```cmd
+mkdir C:\SecureVault
+```
+
+### 6. Create the admin account
+
+Run this **once** to register the admin password in the database:
+
+```bash
+python usb_guard/create_admin.py
+```
+
+You will be prompted to enter and confirm a password. The hash is stored securely using bcrypt — the plaintext password is never saved.
+
+---
+
+## ▶️ Running the System
+
+Start both Flask servers, then launch the USB listener. Open three terminals:
+
+**Terminal 1 — Main log API** (default port 5000):
+
+```bash
 python app.py
-Terminal 2 — Security API
-Bash
+```
+
+**Terminal 2 — USB Guard API** (port 5000, run from `usb_guard/`):
+
+```bash
 cd usb_guard
 python app.py
-Terminal 3 — USB Monitor
-Bash
+```
+
+> If both servers conflict on port 5000, change one — update `FLASK_BASE_URL` in `usb_listener.py` accordingly.
+
+**Terminal 3 — USB listener** (run from `usb_guard/`):
+
+```bash
 cd usb_guard
 python usb_listener.py
+```
 
-🔌 API Endpoints
-📌 USB Log API
-POST /api/usb-log
-JSON
+The listener will print `USB Guard Running... Monitoring USB devices 🔌` and begin watching for hardware events.
+
+---
+
+## 🔌 API Reference
+
+### Main API (`app.py`)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/` | Health check |
+| `POST` | `/api/usb-log` | Store a USB event log entry |
+
+**POST `/api/usb-log` — Request body:**
+
+```json
 {
-  "usb_device_id": "USB\\VID_1234",
-  "device_name": "SanDisk",
-  "action_taken": "Inserted"
+  "usb_device_id": "USB\\VID_1234&PID_5678",
+  "device_name": "SanDisk Ultra",
+  "vendor_name": "SanDisk",
+  "action_taken": "USB Device Inserted",
+  "session_start": "2024-01-15 10:30:00",
+  "session_end": null,
+  "system_user": "DESKTOP-ABC\\John"
 }
-📌 Authentication API
-POST /verify
-JSON
+```
+
+---
+
+### USB Guard API (`usb_guard/app.py`)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/health` | Check API status |
+| `GET` | `/status` | Check if the system is currently locked |
+| `POST` | `/verify` | Submit a password for verification |
+
+**GET `/status` — Response:**
+
+```json
 {
-  "password": "your_password"
+  "locked": true,
+  "lock_until": "2024-01-15 10:35:00"
 }
+```
 
-🗄️ Database Tables
-usb_logs → Tracks USB insert/remove events
-file_access_logs → Logs SecureVault access
-admin_users → Stores admin credentials (bcrypt hashed)
+**POST `/verify` — Request body:**
 
-🔐 Security Highlights
-🔒 bcrypt password hashing (no plaintext storage)
-🚫 Auto lock after failed attempts
-🧠 Session-based access control
-🛑 System-level folder protection (Windows ACL)
-🔐 Environment variable-based secrets
+```json
+{ "password": "your_password" }
+```
 
-⚠️ Limitations
-Windows-only (WMI + icacls dependency)
-Single admin user system
-In-memory session tracking (not persistent across restart)
+**Possible responses:**
 
-🏆 Why This Project Matters
-This project demonstrates:
-Real-world cybersecurity system design
-OS-level access control implementation
-Backend API development (Flask)
-Database integration (MySQL)
-Event-driven system architecture
-Secure authentication systems
+```json
+{ "status": "granted", "message": "Access granted. Session started." }
+{ "status": "denied",  "attempts_left": 2 }
+{ "status": "locked",  "lock_until": "2024-01-15 10:35:00" }
+```
 
-📌 Future Improvements
-Multi-user role system (Admin/User)
-Web dashboard for logs
-Cloud deployment (AWS / Azure)
-AI-based anomaly detection
-Cross-platform support (Linux/macOS)
+---
 
-📄 License
-Educational use only
+## 🗄️ Database Schema
+
+| Table | Purpose |
+|-------|---------|
+| `usb_logs` | Records every USB event: insertions, access decisions, lock/unlock actions |
+| `file_access_logs` | Tracks individual file access within `SecureVault` |
+| `admin_users` | Stores the admin username and bcrypt-hashed password |
+
+---
+
+## 🔐 Security Design
+
+- **Passwords** are hashed with [bcrypt](https://pypi.org/project/bcrypt/) and never stored in plaintext
+- **Folder permissions** are enforced via Windows `icacls` — deny rules block all users during lockout
+- **Fail-safe locking** — if the database is unreachable, the system defaults to locked
+- **Session expiry** — access is automatically revoked after the configured session duration
+- **Credentials via environment variables** — no secrets are hardcoded anywhere in the codebase
+
+---
+
+## 🧪 Testing the Flow Manually
+
+You can simulate the full flow without physical hardware using `curl` or a REST client:
+
+```bash
+# Check lock status
+curl http://localhost:5000/status
+
+# Attempt password verification
+curl -X POST http://localhost:5000/verify \
+  -H "Content-Type: application/json" \
+  -d "{\"password\": \"your_password\"}"
+
+# Log a USB event
+curl -X POST http://localhost:5001/api/usb-log \
+  -H "Content-Type: application/json" \
+  -d "{\"device_name\": \"Test Drive\", \"action_taken\": \"USB Device Inserted\", \"system_user\": \"testuser\"}"
+```
+
+---
+
+## 📦 Dependencies
+
+| Package | Purpose |
+|---------|---------|
+| `flask` | REST API framework |
+| `mysql-connector-python` | MySQL database driver |
+| `bcrypt` | Password hashing |
+| `wmi` | Windows USB event monitoring |
+| `flask-cors` | Cross-origin request support (main API) |
+| `requests` | HTTP client used by the USB listener |
+
+---
+
+## ⚠️ Known Limitations
+
+- **Windows only** — WMI and `icacls` are Windows-specific; this will not run on Linux/macOS
+- **Single admin account** — the current schema supports one admin user (`username = "admin"`)
+- **In-memory attempt counter** — `attempts_remaining` in `security_core.py` resets if the process restarts; a production system should persist this in the database
+
+---
+
+## 📄 License
+
+This project is intended for educational and internal security tooling purposes.
