@@ -1,0 +1,23 @@
+# Python virtual environment — never upload this (huge + machine-specific)
+venv/
+env/
+.venv/
+
+# Python compiled files — auto-generated, not needed on GitHub
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Environment variables file — CONTAINS YOUR SECRET PASSWORD
+.env
+
+# IDE / editor settings
+.vscode/
+.idea/
+*.suo
+*.user
+
+# OS files
+.DS_Store
+Thumbs.db
